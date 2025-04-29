@@ -43,7 +43,7 @@ class TorchOnnx(Exporter, metaclass=TorchOnnxMeta):
         # argument? We could accept framework tensors
         # at the `input_shapes` arg of `Platform.export`
         # and pass them along if they were provided?
-        return torch.randn(*tensor_shape)
+        return torch.randn(*tensor_shape).to("cuda:0")
 
     def _get_output_shapes(self, model_fn, output_names):
         # now that we know we have inputs added to our
