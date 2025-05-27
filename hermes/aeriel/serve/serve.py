@@ -14,6 +14,14 @@ from tritonclient import grpc as triton
 TRITON_BINARY = "/opt/tritonserver/bin/tritonserver"
 LDG_REGISTRY = "/cvmfs/singularity.opensciencegrid.org/ml4gw"
 
+def apptainer_instance(image, name, options, binary_path):
+    from spython.instance import Instance
+    instance = Instance(image=image, name=name, options=options, start=False)
+    instance.cmd = instance._init_command("start")
+    instance.cmd[0] = binary_path
+    instance.start()
+    return instance
+
 
 def target(q: Queue, instance: Instance, cmd: str, *args, **kwargs):
     try:
@@ -115,11 +123,13 @@ def get_wait(q: Queue, log_file: Optional[str] = None):
 def serve(
     model_repo_dir: str,
     image: str,
+    grpc_port: int = 8001,
     name: Optional[str] = None,
     gpus: Optional[Iterable[int]] = None,
     server_args: Optional[Iterable[str]] = None,
     log_file: Optional[str] = None,
     wait: bool = False,
+    singularity_path: Optional[str] = None,
 ) -> Instance:
     """Context which spins up a Triton container in the background
 
@@ -194,8 +204,14 @@ def serve(
 
     # create the base triton server command and
     # point it at the model repository
-    cmd = f"{TRITON_BINARY} --model-repository {model_repo_dir}"
-
+    # cmd = f"{TRITON_BINARY} --model-repository {model_repo_dir}"
+    cmd = (
+        f"{TRITON_BINARY} "
+        f"--model-repository {model_repo_dir} "
+        f"--http-port={grpc_port - 1} "
+        f"--grpc-port={grpc_port} "
+        f"--metrics-port={grpc_port + 1}"
+    )
     # add in any additional arguments to the server
     if server_args is not None:
         cmd += " " + " ".join(server_args)
@@ -229,15 +245,29 @@ def serve(
         environ["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, gpus))
 
     # spin up a container instance using the specified image
-    instance = SingularityClient.instance(
-        image,
-        name=name,
-        start=True,
-        quiet=False,  # if we don't set this, the -s doesn't matter
-        options=["--nv"],
-        singularity_options=["-s"],
-        environ=environ,
-    )
+    # breakpoint()
+
+    if singularity_path is not None:
+        instance = apptainer_instance(
+            image=image,
+            name=None,
+            options=[
+                "--nv",
+                f"-B={model_repo_dir}:{model_repo_dir}",  # Ensure Triton sees it inside container
+                f"-B={log_file.parent}:{log_file.parent}",  # Also for log file access
+            ],
+            binary_path=singularity_path
+        )
+    else:
+        instance = SingularityClient.instance(
+            image,
+            name=name,
+            start=True,
+            quiet=False,
+            options=["--nv"],
+            singularity_options=["-s"],
+            environ=environ,
+        )
 
     # execute the command inside the running container instance.
     # Run it in a separate thread so that we can do work
