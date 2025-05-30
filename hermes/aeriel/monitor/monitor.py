@@ -93,6 +93,7 @@ class ServerMonitor(PipelineProcess):
         model_name: str,
         ips: Union[str, Iterable[str]],
         filename: str,
+        grpc_port: int = 8001,
         model_version: int = -1,
         max_request_rate: float = 10,
         **kwargs,
@@ -105,11 +106,12 @@ class ServerMonitor(PipelineProcess):
         # we want to be requesting from each deployment
         self.ips = list(ips)
         self.models = self.version = None
+        self.grpc_port = grpc_port
         for ip in self.ips:
             # get the config of the model on each IP to
             # figure out which models we need to monitor
             # TODO: make port configurable
-            client = triton.InferenceServerClient(f"{ip}:8001")
+            client = triton.InferenceServerClient(f"{ip}:{grpc_port}")
             config = client.get_model_config(model_name).config
 
             if config.platform == "ensemble":
@@ -185,7 +187,7 @@ class ServerMonitor(PipelineProcess):
         # request some metrics data from the given IP
         # and record the time at which we get the response
         # TODO: make port configurable
-        response = http.request("GET", f"http://{ip}:8002/metrics")
+        response = http.request("GET", f"http://{ip}:{self.grpc_port + 1}/metrics")
         timestamp = time.time()
         content = response.data.decode()
 
