@@ -221,8 +221,10 @@ def serve(
     if log_file is not None:
         cmd += f" > {log_file} 2>&1"
 
-    # add environment variables for the specified GPUs
-    environ = {}
+    # add environment variables for the specified GPUs.
+    # spython hands environ to Popen(env=...), so start from the host env
+    # or PATH is lost and the singularity/apptainer binary can't be found
+    environ = os.environ.copy()
     if gpus is not None:
         host_visible_gpus = os.environ.get("CUDA_VISIBLE_DEVICES", None)
         if host_visible_gpus is not None:
